@@ -12,8 +12,22 @@ import winsound
 import ctypes
 import sys
 
+# YOLO Integration (opcional)
+try:
+    from yolo_poker_analyzer import YOLOPokerAnalyzer, create_yolo_analyzer
+    YOLO_AVAILABLE = True
+except ImportError:
+    YOLO_AVAILABLE = False
+
 class PokerAnalyzer:
-    def __init__(self):
+    def __init__(self, use_yolo=True, yolo_model_path=None):
+        """
+        Inicializa o PokerAnalyzer com suporte opcional YOLO
+        
+        Args:
+            use_yolo: Habilitar detector YOLO
+            yolo_model_path: Caminho opcional para modelo YOLO
+        """
         # Garante que as pastas necessárias existem
         for directory in ["cards_templates", "unknown_cards"]:
             if not os.path.exists(directory):
@@ -22,6 +36,20 @@ class PokerAnalyzer:
 
         self.templates = {}
         self.load_templates()
+        
+        # Inicializar YOLO detector (opcional)
+        self.yolo_analyzer = None
+        self.use_yolo = use_yolo and YOLO_AVAILABLE
+        
+        if self.use_yolo:
+            try:
+                self.yolo_analyzer = create_yolo_analyzer(yolo_model_path)
+                print("[Info] YOLO Poker Analyzer inicializado")
+            except Exception as e:
+                print(f"[Aviso] Falha ao inicializar YOLO: {e}")
+                self.use_yolo = False
+        
+        # Configurações de captura de tela
         try:
             self.sct = mss.mss()
             self.has_display = True
@@ -226,9 +254,24 @@ class PokerAnalyzer:
 
     def identify_cards(self, screen_image, debug_mode=True):
         """
-        Identifica cartas na imagem da tela usando Template Matching.
-        Agora suporta múltiplos templates por carta para melhor reconhecimento.
+        Identifica cartas na imagem da tela usando YOLO (se disponível) ou Template Matching.
+        Suporta múltiplos templates por carta para melhor reconhecimento.
         """
+        # Tentar YOLO primeiro (se disponível e habilitado)
+        if self.use_yolo and self.yolo_analyzer:
+            try:
+                hole_cards, board_cards = self.yolo_analyzer.identify_cards(screen_image, debug_mode)
+                if len(hole_cards) >= 2:  # YOLO detectou cartas suficientes
+                    if debug_mode:
+                        print(f"[Info] YOLO detectou: Hole={len(hole_cards)}, Board={len(board_cards)}")
+                    return hole_cards, board_cards
+                elif debug_mode:
+                    print("[Info] YOLO não detectou cartas suficientes, tentando template matching...")
+            except Exception as e:
+                if debug_mode:
+                    print(f"[Aviso] YOLO falhou: {e}, usando template matching...")
+        
+        # Fallback para template matching
         if not self.templates:
             print("[Aviso] Nenhum template encontrado. Entrando em modo de COLETA DE TEMPLATES.")
             self.extract_potential_cards(screen_image)
@@ -253,9 +296,21 @@ class PokerAnalyzer:
         for carta_nome, template_list in self.templates.items():
             melhor_match = 0
             template_usado = None
+            template_tamanho = None
             
             # Testa cada template da carta
             for template in template_list:
+                h, w = template.shape
+                template_tamanho = f"{w}x{h}"
+                
+                # Ajusta threshold baseado no tamanho do template
+                if w < 30 or h < 50:  # Templates pequenos (como 22x53)
+                    threshold_minimo = 0.90  # 90% para templates pequenos
+                elif w < 50 or h < 70:  # Templates médios
+                    threshold_minimo = 0.85  # 85% para templates médios
+                else:  # Templates grandes
+                    threshold_minimo = 0.80  # 80% para templates grandes
+                
                 res = cv2.matchTemplate(gray_screen, template, cv2.TM_CCOEFF_NORMED)
                 _, max_val, _, _ = cv2.minMaxLoc(res)
                 
@@ -263,10 +318,29 @@ class PokerAnalyzer:
                     melhor_match = max_val
                     template_usado = template
             
-            # Se o melhor match passou do threshold
-            if melhor_match >= 0.75:  # 75% de confiança
-                found_cards.append(carta_nome)
-                print(f"[Debug] Carta {carta_nome} reconhecida com {melhor_match*100:.1f}% de confiança")
+            # Validação adicional para templates pequenos
+            if w < 30 or h < 50:  # Templates pequenos precisam de validação extra
+                # Conta quantos templates da mesma carta atingem threshold alto
+                templates_validos = 0
+                for template_check in template_list:
+                    res_check = cv2.matchTemplate(gray_screen, template_check, cv2.TM_CCOEFF_NORMED)
+                    _, max_val_check, _, _ = cv2.minMaxLoc(res_check)
+                    if max_val_check >= 0.85:  # Threshold mais alto para validação cruzada
+                        templates_validos += 1
+                
+                # Para templates pequenos, requer pelo menos 2 templates confirmando
+                if templates_validos >= 2 and melhor_match >= threshold_minimo:
+                    found_cards.append(carta_nome)
+                    print(f"[Debug] Carta {carta_nome} reconhecida com {melhor_match*100:.1f}% (validação cruzada: {templates_validos} templates)")
+                elif melhor_match >= 0.70:
+                    print(f"[Debug] Carta {carta_nome} próxima: {melhor_match*100:.1f}% (faltou validação cruzada)")
+            else:
+                # Templates grandes usam threshold normal
+                if melhor_match >= threshold_minimo:
+                    found_cards.append(carta_nome)
+                    print(f"[Debug] Carta {carta_nome} reconhecida com {melhor_match*100:.1f}% de confiança (template: {template_tamanho}, threshold: {threshold_minimo*100:.0f}%)")
+                elif melhor_match >= 0.70:  # Debug: mostra quando está próximo mas não passou
+                    print(f"[Debug] Carta {carta_nome} próxima: {melhor_match*100:.1f}% (template: {template_tamanho}, precisava: {threshold_minimo*100:.0f}%)")
         
         # Remove duplicatas (se houver)
         unique_cards = list(set(found_cards))

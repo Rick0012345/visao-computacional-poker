@@ -72,9 +72,18 @@ class PokerGUICompact:
         button_frame = tk.Frame(main_frame, bg=self.bg_color)
         button_frame.pack(pady=(0, 10))
         
-        # Botão Analisar (principal)
+        # Botão Tirar Print (captura de tela)
+        self.screenshot_button = tk.Button(button_frame, text="📸 TIRAR PRINT", 
+                                         command=self.take_screenshot,
+                                         bg="#2196F3", fg="white",
+                                         font=("Arial", 10, "bold"),
+                                         relief=tk.FLAT, padx=15, pady=8,
+                                         cursor="hand2")
+        self.screenshot_button.pack(side=tk.LEFT, padx=(0, 5))
+        
+        # Botão Analisar (apenas análise)
         self.analyze_button = tk.Button(button_frame, text="▶ ANALISAR", 
-                                       command=self.start_analysis,
+                                       command=self.start_analysis_only,
                                        bg=self.accent_color, fg="white",
                                        font=("Arial", 10, "bold"),
                                        relief=tk.FLAT, padx=20, pady=8,
@@ -141,8 +150,73 @@ class PokerGUICompact:
         self.log_text.see(tk.END)
         self.root.update_idletasks()
         
+    def take_screenshot(self):
+        """Apenas tira uma screenshot e salva na pasta lixeira"""
+        try:
+            # Criar pasta lixeira se não existir
+            lixeira_path = "lixeira"
+            if not os.path.exists(lixeira_path):
+                os.makedirs(lixeira_path)
+                self.log_message(f"📁 Pasta '{lixeira_path}' criada", "info")
+            
+            # Criar analisador se necessário
+            if not hasattr(self, 'analyzer') or not self.analyzer:
+                self.log_message("🔧 Inicializando analisador...", "info")
+                try:
+                    from poker_analyzer import PokerAnalyzer
+                    self.analyzer = PokerAnalyzer()
+                    self.log_message("✅ Analisador inicializado com sucesso", "info")
+                except Exception as e:
+                    self.log_message(f"❌ Erro ao inicializar analisador: {str(e)}", "error")
+                    return
+            
+            # Capturar tela
+            self.log_message("📸 Capturando tela...", "info")
+            if not hasattr(self.analyzer, 'capture_screen_direct'):
+                self.log_message("❌ Método de captura não encontrado no analisador", "error")
+                return
+                
+            img = self.analyzer.capture_screen_direct()
+            if img is not None:
+                # Salvar screenshot na pasta lixeira
+                import cv2
+                from datetime import datetime
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                screenshot_filename = f"screenshot_{timestamp}.png"
+                screenshot_path = os.path.join(lixeira_path, screenshot_filename)
+                
+                cv2.imwrite(screenshot_path, img)
+                self.log_message(f"📸 Screenshot salva em: {screenshot_path}", "info")
+                self.log_message(f"✅ Captura realizada com sucesso!", "info")
+            else:
+                self.log_message("❌ Falha na captura de tela", "error")
+                
+        except Exception as e:
+            self.log_message(f"❌ Erro ao tirar screenshot: {str(e)}", "error")
+
+    def start_analysis_only(self):
+        """Apenas faz análise da tela atual sem salvar screenshot"""
+        if not self.running:
+            self.running = True
+            self.analysis_count += 1
+            
+            # Atualizar UI
+            self.analyze_button.config(state=tk.DISABLED)
+            self.screenshot_button.config(state=tk.DISABLED)
+            self.stop_button.config(state=tk.NORMAL)
+            self.status_label.config(fg="#ffaa00")  # Amarelo = analisando
+            self.status_text.config(text="Analisando...")
+            self.counter_label.config(text=f"Análises: {self.analysis_count}")
+            
+            self.log_message("🔍 Iniciando análise da tela...", "info")
+            
+            # Criar thread para análise
+            self.thread = threading.Thread(target=self.run_analysis_only)
+            self.thread.daemon = True
+            self.thread.start()
+
     def start_analysis(self):
-        """Inicia análise única (não contínua)"""
+        """Inicia análise única (não contínua) - mantido para compatibilidade"""
         if not self.running:
             self.running = True
             self.analysis_count += 1
@@ -168,6 +242,95 @@ class PokerGUICompact:
             self.log_message("⏹ Análise interrompida", "warning")
             self.reset_ui()
             
+    def run_analysis_only(self):
+        """Executa apenas análise da tela atual sem salvar screenshot"""
+        try:
+            # Criar analisador se necessário
+            if not hasattr(self, 'analyzer') or not self.analyzer:
+                self.log_message("🔧 Inicializando analisador...", "info")
+                try:
+                    from poker_analyzer import PokerAnalyzer
+                    self.analyzer = PokerAnalyzer()
+                    self.log_message("✅ Analisador inicializado com sucesso", "info")
+                except Exception as e:
+                    self.log_message(f"❌ Erro ao inicializar analisador: {str(e)}", "error")
+                    return
+            
+            # Capturar tela para análise (sem salvar)
+            self.log_message("🔍 Capturando tela para análise...", "info")
+            
+            try:
+                if not hasattr(self.analyzer, 'capture_screen_direct'):
+                    self.log_message("❌ Método de captura não encontrado no analisador", "error")
+                    return
+                    
+                img = self.analyzer.capture_screen_direct()
+                if img is not None:
+                    self.log_message(f"✅ Tela capturada com sucesso (formato: {img.shape})", "info")
+                    
+                    # Verificar se a imagem tem dimensões válidas
+                    if img.shape[0] > 0 and img.shape[1] > 0:
+                        # Identificar cartas
+                        self.log_message("🔍 Identificando cartas...", "info")
+                        hole, board = self.analyzer.identify_cards(img, debug_mode=False)  # Sem debug
+                        
+                        if len(hole) >= 2:
+                            # Calcular equidade
+                            self.log_message("📊 Calculando equidade...", "info")
+                            equity = self.analyzer.calculate_equity(hole, board)
+                            
+                            # Recomendar ação
+                            pot = 100
+                            call = 20
+                            action, odds = self.analyzer.recommend_action(equity, pot, call)
+                            
+                            # Mostrar resultados
+                            self.log_message("🎯 ANÁLISE COMPLETA:", "result")
+                            self.log_message(f"  🂠 Suas cartas: {[Card.int_to_str(c) for c in hole]}", "result")
+                            self.log_message(f"  🃏 Mesa: {[Card.int_to_str(c) for c in board]}", "result")
+                            self.log_message(f"  📊 Equidade: {equity*100:.1f}% | Odds: {odds*100:.1f}%", "result")
+                            self.log_message(f"  💡 Ação: {action}", "result")
+                            
+                        else:
+                            self.log_message("⚠️ Cartas insuficientes detectadas", "warning")
+                    else:
+                        self.log_message("❌ Imagem capturada tem dimensões inválidas", "error")
+                        
+                else:
+                    self.log_message("❌ Falha na captura de tela - imagem retornou None", "error")
+                    
+            except Exception as capture_error:
+                self.log_message(f"❌ Erro na captura: {str(capture_error)}", "error")
+                self.log_message(f"📋 Tipo do erro: {type(capture_error).__name__}", "error")
+                
+                # Tentar método alternativo
+                self.log_message("🔄 Tentando método alternativo...", "info")
+                try:
+                    if hasattr(self.analyzer, 'analyze_screen'):
+                        result = self.analyzer.analyze_screen()
+                        if result and "Erro" not in result:
+                            self.log_message("🎯 ANÁLISE COMPLETA:", "result")
+                            lines = result.split('\n')
+                            for line in lines:
+                                if any(key in line for key in ["Suas cartas:", "Cartas na mesa:", "Equidade:", "Ação:"]):
+                                    self.log_message(f"  {line.strip()}", "result")
+                        else:
+                            self.log_message("❌ Nenhuma mesa detectada pelo método alternativo", "error")
+                            if result:
+                                self.log_message(f"📋 Resultado do método alternativo: {result}", "info")
+                    else:
+                        self.log_message("❌ Método alternativo não disponível", "error")
+                except Exception as alt_error:
+                    self.log_message(f"❌ Erro no método alternativo: {str(alt_error)}", "error")
+                
+        except Exception as e:
+            self.log_message(f"❌ Erro geral na análise: {str(e)}", "error")
+            self.log_message(f"📋 Tipo do erro geral: {type(e).__name__}", "error")
+            
+        finally:
+            self.running = False
+            self.root.after(500, self.reset_ui)
+
     def run_single_analysis(self):
         """Executa uma única análise"""
         try:
@@ -274,6 +437,7 @@ class PokerGUICompact:
     def reset_ui(self):
         """Reseta UI para estado inicial"""
         self.analyze_button.config(state=tk.NORMAL)
+        self.screenshot_button.config(state=tk.NORMAL)
         self.stop_button.config(state=tk.DISABLED)
         self.status_label.config(fg="#4CAF50")  # Verde = pronto
         self.status_text.config(text="Pronto")
