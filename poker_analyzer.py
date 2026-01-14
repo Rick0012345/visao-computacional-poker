@@ -22,31 +22,23 @@ except ImportError:
 class PokerAnalyzer:
     def __init__(self, use_yolo=True, yolo_model_path=None):
         """
-        Inicializa o PokerAnalyzer com suporte opcional YOLO
+        Inicializa o PokerAnalyzer com suporte YOLO
         
         Args:
-            use_yolo: Habilitar detector YOLO
+            use_yolo: Habilitar detector YOLO (sempre True agora)
             yolo_model_path: Caminho opcional para modelo YOLO
         """
-        # Garante que as pastas necessárias existem
-        for directory in ["cards_templates", "unknown_cards"]:
-            if not os.path.exists(directory):
-                os.makedirs(directory)
-                print(f"[Info] Pasta criada: {directory}")
-
-        self.templates = {}
-        self.load_templates()
-        
-        # Inicializar YOLO detector (opcional)
+        # Inicializar YOLO detector
         self.yolo_analyzer = None
-        self.use_yolo = use_yolo and YOLO_AVAILABLE
+        self.use_yolo = True  # Sempre usar YOLO agora
         
         if self.use_yolo:
             try:
-                self.yolo_analyzer = create_yolo_analyzer(yolo_model_path)
+                self.yolo_analyzer = create_yolo_analyzer(yolo_model_path, use_template_fallback=False)
                 print("[Info] YOLO Poker Analyzer inicializado")
             except Exception as e:
                 print(f"[Aviso] Falha ao inicializar YOLO: {e}")
+                print("[Info] Por favor, treine o modelo YOLO com: python quick_train_yolo11.py")
                 self.use_yolo = False
         
         # Configurações de captura de tela
@@ -59,68 +51,10 @@ class PokerAnalyzer:
 
     def load_templates(self):
         """
-        Carrega os templates de cartas da pasta 'cards_templates'.
-        Agora suporta estrutura de pastas organizadas:
-        cards_templates/
-        ├── As/
-        │   ├── As_1.png
-        │   ├── As_2.png
-        │   └── As_3.png
-        ├── Kh/
-        │   ├── Kh_1.png
-        │   └── Kh_2.png
-        └── etc...
-        
-        O nome da pasta é o código da carta (ex: 'As', 'Kd.png', 'Th.png').
+        Função removida - agora usa apenas YOLO para detecção de cartas.
         """
-        self.templates = {}  # Limpa templates anteriores
-        
-        # Verifica se a pasta cards_templates existe
-        if not os.path.exists("cards_templates"):
-            print("[Info] Pasta 'cards_templates' não encontrada. Criando estrutura...")
-            os.makedirs("cards_templates", exist_ok=True)
-            return
-        
-        # Percorre todas as subpastas em cards_templates
-        for carta_dir in os.listdir("cards_templates"):
-            carta_path = os.path.join("cards_templates", carta_dir)
-            
-            # Verifica se é uma pasta (e não um arquivo .png solto)
-            if os.path.isdir(carta_path):
-                carta_nome = carta_dir  # Nome da pasta = nome da carta
-                print(f"[Debug] Carregando templates para {carta_nome}...")
-                
-                # Carrega todas as imagens da pasta
-                imagens_carta = []
-                for arquivo in os.listdir(carta_path):
-                    if arquivo.lower().endswith(('.png', '.jpg', '.jpeg')):
-                        img_path = os.path.join(carta_path, arquivo)
-                        img = cv2.imread(img_path, cv2.IMREAD_GRAYSCALE)
-                        if img is not None:
-                            imagens_carta.append(img)
-                            print(f"  ✓ Carregado: {arquivo}")
-                        else:
-                            print(f"  ✗ Falha ao carregar: {arquivo}")
-                
-                if imagens_carta:
-                    # Armazena a lista de templates para esta carta
-                    self.templates[carta_nome] = imagens_carta
-                    print(f"[Info] {len(imagens_carta)} templates carregados para {carta_nome}")
-                else:
-                    print(f"[Aviso] Nenhuma imagem válida encontrada em {carta_path}")
-            
-            # Também suporta arquivos .png soltos para compatibilidade retro
-            elif carta_dir.endswith('.png'):
-                carta_nome = carta_dir[:-4]  # Remove .png
-                img_path = os.path.join("cards_templates", carta_dir)
-                img = cv2.imread(img_path, cv2.IMREAD_GRAYSCALE)
-                if img is not None:
-                    self.templates[carta_nome] = [img]  # Lista com um único template
-                    print(f"[Info] Template único carregado: {carta_nome}")
-        
-        print(f"\n[Info] Total de cartas com templates: {len(self.templates)}")
-        if self.templates:
-            print("Cartas carregadas:", list(self.templates.keys()))
+        print("[Info] Template matching desativado. Usando apenas YOLO.")
+        return
 
     def capture_screen(self, region=None):
         """
@@ -254,10 +188,9 @@ class PokerAnalyzer:
 
     def identify_cards(self, screen_image, debug_mode=True):
         """
-        Identifica cartas na imagem da tela usando YOLO (se disponível) ou Template Matching.
-        Suporta múltiplos templates por carta para melhor reconhecimento.
+        Identifica cartas na imagem usando apenas YOLO (sem template matching).
         """
-        # Tentar YOLO primeiro (se disponível e habilitado)
+        # Usar apenas YOLO
         if self.use_yolo and self.yolo_analyzer:
             try:
                 hole_cards, board_cards = self.yolo_analyzer.identify_cards(screen_image, debug_mode)
@@ -265,16 +198,16 @@ class PokerAnalyzer:
                     if debug_mode:
                         print(f"[Info] YOLO detectou: Hole={len(hole_cards)}, Board={len(board_cards)}")
                     return hole_cards, board_cards
-                elif debug_mode:
-                    print("[Info] YOLO não detectou cartas suficientes, tentando template matching...")
+                else:
+                    if debug_mode:
+                        print("[Info] YOLO não detectou cartas suficientes")
+                    return [], []
             except Exception as e:
                 if debug_mode:
-                    print(f"[Aviso] YOLO falhou: {e}, usando template matching...")
-        
-        # Fallback para template matching
-        if not self.templates:
-            print("[Aviso] Nenhum template encontrado. Entrando em modo de COLETA DE TEMPLATES.")
-            self.extract_potential_cards(screen_image)
+                    print(f"[Aviso] YOLO falhou: {e}")
+                return [], []
+        else:
+            print("[Erro] YOLO não está disponível. Por favor, treine o modelo primeiro.")
             return [], []
         
         # Salvar imagem original para debug se solicitado
@@ -366,79 +299,11 @@ class PokerAnalyzer:
 
     def extract_potential_cards(self, screen_image):
         """
-        Tenta encontrar contornos retangulares que pareçam cartas e os salva para o usuário nomear.
+        FUNÇÃO REMOVIDA - Agora usa apenas YOLO para detecção de cartas.
+        Template matching foi desativado.
         """
-        gray = cv2.cvtColor(screen_image, cv2.COLOR_BGR2GRAY)
-        
-        # Threshold para binarizar (pode precisar ajustar dependendo do fundo da mesa)
-        # Tenta OTSU para encontrar o threshold ótimo automaticamente
-        _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-        
-        # Salva imagem binarizada para debug
-        try:
-            timestamp = int(time.time())
-            debug_filename = f"debug_threshold_{timestamp}.png"
-            cv2.imwrite(debug_filename, thresh)
-            print(f"[Debug] Imagem {debug_filename} salva em: {os.getcwd()}")
-        except Exception as e:
-            print(f"[Erro] Falha ao salvar {debug_filename}: {e}")
-        
-        contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        
-        # Imagem para desenhar os contornos (debug visual)
-        debug_img = screen_image.copy()
-        
-        saved_count = 0
-        print(f"[Debug] Encontrei {len(contours)} contornos iniciais. Filtrando...")
-        
-        for i, cnt in enumerate(contours):
-            # Desenha todos os contornos em azul (fino) para saber que foi detectado
-            cv2.drawContours(debug_img, [cnt], -1, (255, 0, 0), 1)
-            
-            # Filtra por área (Relaxado para GG Poker: cartas podem ser menores ou maiores)
-            area = cv2.contourArea(cnt)
-            if 500 < area < 100000: 
-                x, y, w, h = cv2.boundingRect(cnt)
-                aspect_ratio = float(w)/h
-                
-                # Cartas GG Poker são inclinadas (ratio muda) e podem estar sobrepostas
-                # Relaxando ratio: de 0.5 (carta em pé) até 1.5 (carta deitada/inclinada ou duas juntas)
-                if 0.5 < aspect_ratio < 2.0:
-                    # Desenha retângulo verde nos aceitos
-                    cv2.rectangle(debug_img, (x, y), (x+w, y+h), (0, 255, 0), 2)
-                    
-                    roi = screen_image[y:y+h, x:x+w]
-                    timestamp = int(time.time())
-                    filename = f"unknown_cards/card_{timestamp}_{i}.png"
-                    cv2.imwrite(filename, roi)
-                    saved_count += 1
-        
-        # Salva o mapa de contornos
-        try:
-            timestamp = int(time.time())
-            debug_filename = f"debug_contours_{timestamp}.png"
-            cv2.imwrite(debug_filename, debug_img)
-            print(f"[Debug] Salvei '{debug_filename}' em: {os.getcwd()}")
-            print("[Debug] Imagem mostra o que foi detectado (Verde = Salvo, Azul = Ignorado).")
-        except Exception as e:
-            print(f"[Erro] Falha ao salvar {debug_filename}: {e}")
-        
-        # Criar diretório unknown_cards se não existir
-        os.makedirs("unknown_cards", exist_ok=True)
-        
-        if saved_count > 0:
-            print(f"[Info] {saved_count} potenciais cartas salvas na pasta 'unknown_cards'.")
-            print("POR FAVOR: Vá até a pasta 'unknown_cards', identifique as cartas e mova/renomeie para 'cards_templates' (ex: 'As.png').")
-        else:
-            print("[Aviso] Não consegui detectar contornos de cartas claros. Tente ajustar a iluminação ou o threshold.")
-            # Salva a tela inteira para debug
-            try:
-                timestamp = int(time.time())
-                debug_filename = f"debug_screen_{timestamp}.png"
-                cv2.imwrite(debug_filename, screen_image)
-                print(f"[Debug] Salvei '{debug_filename}' em: {os.getcwd()}")
-            except Exception as e:
-                print(f"[Erro] Falha ao salvar {debug_filename}: {e}")
+        print("[Info] Função extract_potential_cards removida. Usando YOLO para detecção.")
+        return
 
 
     def calculate_equity(self, hole_cards, board_cards, iterations=1000):

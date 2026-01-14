@@ -15,19 +15,13 @@ from datetime import datetime
 sys.path.append(str(Path(__file__).parent))
 
 try:
-    from realtime_poker_detector import create_realtime_detector
     from yolo_poker_detector import YOLOPokerDetector
     YOLO_AVAILABLE = True
 except ImportError as e:
     print(f"⚠️ YOLO modules não disponíveis: {e}")
     YOLO_AVAILABLE = False
 
-try:
-    from poker_analyzer import PokerAnalyzer
-    ANALYZER_AVAILABLE = True
-except ImportError as e:
-    print(f"⚠️ Poker Analyzer não disponível: {e}")
-    ANALYZER_AVAILABLE = False
+ANALYZER_AVAILABLE = False
 
 class YOLOPokerAnalyzer:
     """
@@ -35,7 +29,7 @@ class YOLOPokerAnalyzer:
     Mantém compatibilidade com poker_analyzer existente mas adiciona YOLO
     """
     
-    def __init__(self, yolo_model_path=None, use_yolo=True, use_template_fallback=True):
+    def __init__(self, yolo_model_path=None, use_yolo=True, use_template_fallback=False):
         """
         Inicializa o analisador YOLO
         
@@ -87,6 +81,7 @@ class YOLOPokerAnalyzer:
                         print(f"✅ YOLO Detector inicializado: {default_model}")
                     else:
                         print("⚠️ Modelo YOLO não encontrado, criando detector em tempo real...")
+                        from realtime_poker_detector import create_realtime_detector
                         self.realtime_detector = create_realtime_detector()
                         
                         if self.realtime_detector.detection_function:
@@ -363,7 +358,7 @@ class YOLOPokerAnalyzer:
         self.use_detection_smoothing = enable
 
 # Função de conveniência para criar analisador YOLO
-def create_yolo_analyzer(yolo_model_path=None, use_template_fallback=True):
+def create_yolo_analyzer(yolo_model_path=None, use_template_fallback=False):
     """
     Cria um analisador YOLO configurado
     

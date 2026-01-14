@@ -72,16 +72,7 @@ class PokerGUICompact:
         button_frame = tk.Frame(main_frame, bg=self.bg_color)
         button_frame.pack(pady=(0, 10))
         
-        # Botão Tirar Print (captura de tela)
-        self.screenshot_button = tk.Button(button_frame, text="📸 TIRAR PRINT", 
-                                         command=self.take_screenshot,
-                                         bg="#2196F3", fg="white",
-                                         font=("Arial", 10, "bold"),
-                                         relief=tk.FLAT, padx=15, pady=8,
-                                         cursor="hand2")
-        self.screenshot_button.pack(side=tk.LEFT, padx=(0, 5))
-        
-        # Botão Analisar (apenas análise)
+        # Botão Analisar (principal)
         self.analyze_button = tk.Button(button_frame, text="▶ ANALISAR", 
                                        command=self.start_analysis_only,
                                        bg=self.accent_color, fg="white",
@@ -150,50 +141,6 @@ class PokerGUICompact:
         self.log_text.see(tk.END)
         self.root.update_idletasks()
         
-    def take_screenshot(self):
-        """Apenas tira uma screenshot e salva na pasta lixeira"""
-        try:
-            # Criar pasta lixeira se não existir
-            lixeira_path = "lixeira"
-            if not os.path.exists(lixeira_path):
-                os.makedirs(lixeira_path)
-                self.log_message(f"📁 Pasta '{lixeira_path}' criada", "info")
-            
-            # Criar analisador se necessário
-            if not hasattr(self, 'analyzer') or not self.analyzer:
-                self.log_message("🔧 Inicializando analisador...", "info")
-                try:
-                    from poker_analyzer import PokerAnalyzer
-                    self.analyzer = PokerAnalyzer()
-                    self.log_message("✅ Analisador inicializado com sucesso", "info")
-                except Exception as e:
-                    self.log_message(f"❌ Erro ao inicializar analisador: {str(e)}", "error")
-                    return
-            
-            # Capturar tela
-            self.log_message("📸 Capturando tela...", "info")
-            if not hasattr(self.analyzer, 'capture_screen_direct'):
-                self.log_message("❌ Método de captura não encontrado no analisador", "error")
-                return
-                
-            img = self.analyzer.capture_screen_direct()
-            if img is not None:
-                # Salvar screenshot na pasta lixeira
-                import cv2
-                from datetime import datetime
-                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                screenshot_filename = f"screenshot_{timestamp}.png"
-                screenshot_path = os.path.join(lixeira_path, screenshot_filename)
-                
-                cv2.imwrite(screenshot_path, img)
-                self.log_message(f"📸 Screenshot salva em: {screenshot_path}", "info")
-                self.log_message(f"✅ Captura realizada com sucesso!", "info")
-            else:
-                self.log_message("❌ Falha na captura de tela", "error")
-                
-        except Exception as e:
-            self.log_message(f"❌ Erro ao tirar screenshot: {str(e)}", "error")
-
     def start_analysis_only(self):
         """Apenas faz análise da tela atual sem salvar screenshot"""
         if not self.running:
@@ -202,7 +149,6 @@ class PokerGUICompact:
             
             # Atualizar UI
             self.analyze_button.config(state=tk.DISABLED)
-            self.screenshot_button.config(state=tk.DISABLED)
             self.stop_button.config(state=tk.NORMAL)
             self.status_label.config(fg="#ffaa00")  # Amarelo = analisando
             self.status_text.config(text="Analisando...")
@@ -437,7 +383,6 @@ class PokerGUICompact:
     def reset_ui(self):
         """Reseta UI para estado inicial"""
         self.analyze_button.config(state=tk.NORMAL)
-        self.screenshot_button.config(state=tk.NORMAL)
         self.stop_button.config(state=tk.DISABLED)
         self.status_label.config(fg="#4CAF50")  # Verde = pronto
         self.status_text.config(text="Pronto")

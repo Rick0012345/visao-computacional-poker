@@ -8,6 +8,7 @@ import subprocess
 import sys
 import os
 from pathlib import Path
+from datetime import datetime
 
 def run_command(command, description=None):
     """Executa comando e retorna sucesso/erro"""

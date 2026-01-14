@@ -14,7 +14,6 @@ from datetime import datetime
 
 try:
     from ultralytics import YOLO
-    from ultralytics.utils.torch_utils import select_device
     YOLO_AVAILABLE = True
 except ImportError:
     YOLO_AVAILABLE = False
@@ -46,16 +45,16 @@ def create_data_yaml(dataset_path, output_path='poker_yolo11/datasets/poker_data
     """
     
     # Verificar se o dataset existe
-    dataset_path = Path(dataset_path)
+    dataset_path = Path(dataset_path).resolve()
     if not dataset_path.exists():
         print(f"❌ Dataset não encontrado: {dataset_path}")
         return None
     
     # Criar configuração do dataset
     data_config = {
-        'train': str(dataset_path / 'train' / 'images'),
-        'val': str(dataset_path / 'valid' / 'images'),
-        'test': str(dataset_path / 'test' / 'images') if (dataset_path / 'test').exists() else None,
+        'path': str(dataset_path),
+        'train': 'train/images',
+        'val': 'valid/images',
         'nc': 52,  # Número de classes (52 cartas do baralho)
         'names': [
             '10c', '10d', '10h', '10s', '2c', '2d', '2h', '2s', '3c', '3d', '3h', '3s',
@@ -65,6 +64,10 @@ def create_data_yaml(dataset_path, output_path='poker_yolo11/datasets/poker_data
             'Qc', 'Qd', 'Qh', 'Qs'
         ]
     }
+    
+    test_dir = dataset_path / 'test' / 'images'
+    if test_dir.exists():
+        data_config['test'] = 'test/images'
     
     # Salvar configuração
     output_path = Path(output_path)
@@ -99,7 +102,7 @@ def train_model(data_yaml, model_size='n', epochs=100, imgsz=640, batch_size=16,
     print(f"📦 Batch size: {batch_size}")
     
     # Selecionar dispositivo
-    device = select_device('' if torch.cuda.is_available() else 'cpu')
+    device = '0' if torch.cuda.is_available() else 'cpu'
     print(f"💻 Dispositivo: {device}")
     
     # Criar modelo
@@ -109,15 +112,6 @@ def train_model(data_yaml, model_size='n', epochs=100, imgsz=640, batch_size=16,
     try:
         model = YOLO(model_name)
         
-        # Configurar hiperparâmetros
-        model.overrides = {
-            'conf': 0.25,  # Confidence threshold
-            'iou': 0.45,   # NMS IoU threshold
-            'agnostic_nms': False,
-            'max_det': 300,  # Maximum detections per image
-            'amp': True,  # Automatic Mixed Precision
-        }
-        
         # Treinar modelo
         print("🏋️ Iniciando treinamento...")
         results = model.train(
@@ -126,6 +120,10 @@ def train_model(data_yaml, model_size='n', epochs=100, imgsz=640, batch_size=16,
             imgsz=imgsz,
             batch=batch_size,
             device=device,
+            conf=0.25,
+            iou=0.45,
+            agnostic_nms=False,
+            max_det=300,
             patience=patience,
             save=True,
             save_period=10,
@@ -171,6 +169,9 @@ def train_model(data_yaml, model_size='n', epochs=100, imgsz=640, batch_size=16,
             
     except Exception as e:
         print(f"❌ Erro durante o treinamento: {e}")
+        print(f"   Tipo: {type(e).__name__}")
+        import traceback
+        traceback.print_exc()
         return None
 
 def validate_model(model_path, data_yaml):

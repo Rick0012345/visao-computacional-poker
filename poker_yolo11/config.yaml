@@ -1,0 +1,27 @@
+# YOLOv11 Poker Configuration
+# Gerado em: 2026-01-13 19:20:23
+
+# Model settings
+MODEL_SIZE: n  # n, s, m, l, x
+CONFIDENCE: 0.5
+IOU_THRESHOLD: 0.45
+
+# Training settings
+EPOCHS: 100
+BATCH_SIZE: 16
+IMAGE_SIZE: 640
+PATIENCE: 20
+
+# Detection settings
+USE_YOLO: true
+USE_TEMPLATE_FALLBACK: true
+DETECTION_SMOOTHING: true
+BUFFER_SIZE: 3
+
+# Paths
+DATASET_PATH: cards_templates/IA/dataset
+DEFAULT_MODEL: poker_yolo11/poker_detector_n/weights/best.pt
+
+# GPU Settings
+GPU_AVAILABLE: False
+DEVICE: cpu
